@@ -185,22 +185,20 @@
   <header>
     <h1>BASE PLANNER</h1>
     <div class="tabs">
-      <button id="tabLive" class="active">🗺 Live</button>
-      <button id="tabMap">🖌 Plan</button>
+      <button id="tabMap" class="active">🖌 Map</button>
       <button id="tabList">📦 Blocks</button>
     </div>
     <div class="who">Logged in as <b id="whoName"></b> · <a href="#" id="logoutLink" style="color:var(--redstone)">log out</a></div>
   </header>
 
   <main>
-    <!-- LIVE MAP VIEW -->
-    <section id="liveView" class="view active" style="padding:0;">
-      <iframe id="liveFrame" src="https://s5w1.contentveen.nl" style="width:100%;height:100%;border:none;"></iframe>
-    </section>
-
-    <!-- PLAN / DRAWING VIEW -->
-    <section id="mapView" class="view">
+    <!-- MAP / DRAWING VIEW -->
+    <section id="mapView" class="view active">
       <div id="toolbar">
+        <a href="https://s5w1.contentveen.nl" target="_blank" rel="noopener"
+           class="tool-btn" style="display:block;text-align:center;text-decoration:none;color:var(--gold);border-color:var(--gold);">
+          🗺 Open live map ↗
+        </a>
         <h3>Tool</h3>
         <button class="tool-btn active" data-tool="pen">✏️ Pen</button>
         <button class="tool-btn" data-tool="rect">▭ Build zone</button>
@@ -217,7 +215,7 @@
       </div>
       <div id="canvasWrap">
         <div id="noImageMsg" style="display:none">
-          No base image yet. Go to the <b>Live Map</b> tab, screenshot your area
+          No base image yet. Tap <b>Open live map</b> above, screenshot your area
           (Windows: Win+Shift+S), then come back here and upload it to start planning.
           <br><br>
           <button id="uploadFirstBtn">Upload screenshot</button>
@@ -324,7 +322,6 @@ document.getElementById("logoutLink").onclick = (e)=>{
 };
 
 /* ---------------- TABS ---------------- */
-document.getElementById("tabLive").onclick = ()=> switchTab("liveView","tabLive");
 document.getElementById("tabMap").onclick = ()=> switchTab("mapView","tabMap");
 document.getElementById("tabList").onclick = ()=> switchTab("listView","tabList");
 function switchTab(viewId, tabId){
