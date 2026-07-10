@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Base Planner</title>
+
+<!-- Firebase (compat SDK, no build step needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* palette pulled from oak wood, dirt, grass block and crafting-table brass */
+    --bg:#1b140c;
+    --dirt:#3c2b1c;
+    --dirt-lt:#4f3a26;
+    --slot:#241a11;
+    --bevel-hi:#7a5d3f;
+    --bevel-lo:#120d08;
+    --grass:#63973a;
+    --grass-dark:#436726;
+    --gold:#d8a83c;
+    --redstone:#a5382a;
+    --redstone-dark:#7c281d;
+    --text:#eee2c8;
+    --text-dim:#a3937a;
+    --pixel:'Press Start 2P',monospace;
+    --chunky:'VT323',monospace;
+  }
+  *{box-sizing:border-box;image-rendering:pixelated;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:'Segoe UI',Roboto,system-ui,sans-serif;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 2px, transparent 2px 4px),
+      repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 2px, transparent 2px 4px);
+  }
+
+  h1,h2,h3,.pixel{font-family:var(--pixel);}
+
+  /* generic "inventory slot" bevel, used for every clickable block */
+  .bevel{
+    border-top:3px solid var(--bevel-hi);
+    border-left:3px solid var(--bevel-hi);
+    border-bottom:3px solid var(--bevel-lo);
+    border-right:3px solid var(--bevel-lo);
+    border-radius:0;
+  }
+  .bevel:active{
+    border-top:3px solid var(--bevel-lo);
+    border-left:3px solid var(--bevel-lo);
+    border-bottom:3px solid var(--bevel-hi);
+    border-right:3px solid var(--bevel-hi);
+  }
+
+  /* ---------- LOGIN ---------- */
+  #loginScreen{
+    height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;
+    background:
+      linear-gradient(rgba(27,20,12,.85),rgba(27,20,12,.85)),
+      repeating-conic-gradient(#241a11 0% 25%, #2c2015 0% 50%) 0 0/16px 16px;
+  }
+  #loginScreen h1{font-size:1rem;letter-spacing:.02em;color:var(--gold);margin-bottom:0;text-shadow:2px 2px 0 #000;}
+  #loginScreen p.sub{color:var(--text-dim);margin-top:2px;font-size:1.05rem;font-family:var(--chunky);}
+  .card{background:var(--dirt);padding:22px;width:280px;
+    border-top:3px solid var(--bevel-hi);border-left:3px solid var(--bevel-hi);
+    border-bottom:3px solid var(--bevel-lo);border-right:3px solid var(--bevel-lo);}
+  select,input[type=password],input[type=text]{
+    width:100%;padding:9px 8px;margin-top:6px;margin-bottom:14px;background:var(--slot);
+    border-top:2px solid var(--bevel-lo);border-left:2px solid var(--bevel-lo);
+    border-bottom:2px solid var(--bevel-hi);border-right:2px solid var(--bevel-hi);
+    border-radius:0;color:var(--text);font-size:1.05rem;font-family:var(--chunky);
+  }
+  label{font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;font-family:var(--pixel);}
+  button{
+    background:var(--grass-dark);color:#fff;padding:10px 16px;border-radius:0;
+    font-size:1.05rem;font-family:var(--chunky);letter-spacing:.03em;cursor:pointer;
+    border-top:3px solid var(--bevel-hi);border-left:3px solid var(--bevel-hi);
+    border-bottom:3px solid var(--bevel-lo);border-right:3px solid var(--bevel-lo);
+  }
+  button:hover{background:var(--grass);}
+  button:active{
+    border-top:3px solid var(--bevel-lo);border-left:3px solid var(--bevel-lo);
+    border-bottom:3px solid var(--bevel-hi);border-right:3px solid var(--bevel-hi);
+  }
+  #loginMsg{color:var(--redstone);font-size:.9rem;min-height:18px;margin-top:6px;font-family:var(--chunky);}
+
+  /* ---------- APP SHELL ---------- */
+  #app{display:none;height:100%;flex-direction:column;}
+  header{
+    display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
+    background:var(--dirt);border-bottom:3px solid var(--bevel-lo);flex-wrap:wrap;gap:8px;
+  }
+  header h1{font-size:.7rem;color:var(--gold);margin:0;text-shadow:1px 1px 0 #000;}
+  header .who{color:var(--text-dim);font-size:1rem;font-family:var(--chunky);}
+  header .who b{color:var(--text);}
+
+  /* ----- hotbar-style tab bar (the signature element) ----- */
+  .tabs{display:flex;gap:4px;background:var(--slot);padding:4px;
+    border-top:2px solid var(--bevel-lo);border-left:2px solid var(--bevel-lo);
+    border-bottom:2px solid var(--bevel-hi);border-right:2px solid var(--bevel-hi);}
+  .tabs button{
+    background:var(--dirt-lt);color:var(--text-dim);padding:8px 14px;font-size:.95rem;
+    border-top:2px solid var(--bevel-hi);border-left:2px solid var(--bevel-hi);
+    border-bottom:2px solid var(--bevel-lo);border-right:2px solid var(--bevel-lo);
+  }
+  .tabs button.active{
+    background:var(--dirt);color:var(--gold);
+    border:2px solid var(--gold);
+    box-shadow:0 0 0 1px #000 inset;
+  }
+
+  main{flex:1;overflow:hidden;position:relative;}
+  section.view{display:none;height:100%;}
+  section.view.active{display:flex;}
+
+  /* ---------- MAP VIEW ---------- */
+  #mapView{flex-direction:row;}
+  #toolbar{
+    width:156px;background:var(--dirt);border-right:3px solid var(--bevel-lo);
+    padding:12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;
+  }
+  #toolbar h3{font-size:.62rem;text-transform:uppercase;color:var(--gold);margin:10px 0 2px;letter-spacing:.05em;}
+  .tool-btn{
+    background:var(--slot);color:var(--text);
+    border-top:2px solid var(--bevel-hi);border-left:2px solid var(--bevel-hi);
+    border-bottom:2px solid var(--bevel-lo);border-right:2px solid var(--bevel-lo);
+    text-align:left;padding:8px 10px;font-size:1rem;font-family:var(--chunky);
+  }
+  .tool-btn.active{background:var(--grass-dark);border-color:var(--gold);color:#fff;
+    border-top:2px solid var(--gold);border-left:2px solid var(--gold);}
+  input[type=color]{width:100%;height:34px;border:none;background:none;padding:0;}
+  input[type=range]{width:100%;accent-color:var(--grass);}
+  #canvasWrap{
+    flex:1;overflow:auto;position:relative;background:#100c07;
+    background-image:linear-gradient(45deg,#1a130c 25%,transparent 25%),
+      linear-gradient(-45deg,#1a130c 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#1a130c 75%),
+      linear-gradient(-45deg,transparent 75%,#1a130c 75%);
+    background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0px;
+  }
+  #stage{position:relative;transform-origin:0 0;}
+  #bgImg{display:block;max-width:none;user-select:none;-webkit-user-drag:none;}
+  #drawCanvas{position:absolute;top:0;left:0;touch-action:none;}
+  #noImageMsg{
+    padding:40px;text-align:center;color:var(--text-dim);max-width:360px;margin:60px auto;
+    font-family:var(--chunky);font-size:1.1rem;
+  }
+
+  /* ---------- BLOCK LIST VIEW ---------- */
+  #listView{flex-direction:column;padding:16px;overflow-y:auto;max-width:640px;margin:0 auto;width:100%;}
+  #addItemRow{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  #addItemRow input{margin:0;flex:1;min-width:100px;}
+  #addItemRow input#itemQty{max-width:80px;flex:0 0 80px;}
+  table{width:100%;border-collapse:collapse;font-family:var(--chunky);}
+  th,td{text-align:left;padding:8px 6px;border-bottom:2px solid var(--dirt-lt);font-size:1.05rem;}
+  th{color:var(--gold);font-weight:400;text-transform:uppercase;font-size:.65rem;font-family:var(--pixel);}
+  tr.done td{opacity:.4;text-decoration:line-through;}
+  td.actions{text-align:right;white-space:nowrap;}
+  td.actions button{padding:5px 9px;font-size:.85rem;margin-left:4px;}
+  .del-btn{background:var(--redstone-dark);}
+  .del-btn:hover{background:var(--redstone);}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen">
+  <h1>BASE PLANNER</h1>
+  <p class="sub">⛏ play.contentveen.nl team map</p>
+  <div class="card">
+    <label>Who are you?</label>
+    <select id="userSelect"></select>
+    <label id="pwLabel">Password</label>
+    <input type="password" id="pwInput" placeholder="Password">
+    <button id="loginBtn" style="width:100%">Enter</button>
+    <div id="loginMsg"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <header>
+    <h1>BASE PLANNER</h1>
+    <div class="tabs">
+      <button id="tabLive" class="active">🗺 Live</button>
+      <button id="tabMap">🖌 Plan</button>
+      <button id="tabList">📦 Blocks</button>
+    </div>
+    <div class="who">Logged in as <b id="whoName"></b> · <a href="#" id="logoutLink" style="color:var(--redstone)">log out</a></div>
+  </header>
+
+  <main>
+    <!-- LIVE MAP VIEW -->
+    <section id="liveView" class="view active" style="padding:0;">
+      <iframe id="liveFrame" src="https://s5w1.contentveen.nl" style="width:100%;height:100%;border:none;"></iframe>
+    </section>
+
+    <!-- PLAN / DRAWING VIEW -->
+    <section id="mapView" class="view">
+      <div id="toolbar">
+        <h3>Tool</h3>
+        <button class="tool-btn active" data-tool="pen">✏️ Pen</button>
+        <button class="tool-btn" data-tool="rect">▭ Build zone</button>
+        <button class="tool-btn" data-tool="pin">📍 Pin</button>
+        <button class="tool-btn" data-tool="erase">🧹 Erase</button>
+        <h3>Color</h3>
+        <input type="color" id="colorPicker" value="#7ba05b">
+        <h3>Zoom</h3>
+        <input type="range" id="zoomSlider" min="30" max="250" value="100">
+        <h3>Map image</h3>
+        <button class="tool-btn" id="changeImageBtn">Replace image</button>
+        <input type="file" id="imgFile" accept="image/*" style="display:none">
+        <button class="tool-btn" id="clearDrawBtn">Clear all drawings</button>
+      </div>
+      <div id="canvasWrap">
+        <div id="noImageMsg" style="display:none">
+          No base image yet. Go to the <b>Live Map</b> tab, screenshot your area
+          (Windows: Win+Shift+S), then come back here and upload it to start planning.
+          <br><br>
+          <button id="uploadFirstBtn">Upload screenshot</button>
+        </div>
+        <div id="stage">
+          <img id="bgImg" src="">
+          <canvas id="drawCanvas"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- BLOCK LIST VIEW -->
+    <section id="listView" class="view">
+      <div id="addItemRow">
+        <input type="text" id="itemName" placeholder="Block / item (e.g. Oak Planks)">
+        <input type="text" id="itemQty" placeholder="Qty">
+        <button id="addItemBtn">Add</button>
+      </div>
+      <table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Requested by</th><th></th></tr></thead>
+        <tbody id="listBody"></tbody>
+      </table>
+    </section>
+  </main>
+
+</div>
+
+<script>
+/* =========================================================
+   1. CONFIG — edit these two things before you deploy
+   ========================================================= */
+
+// Your team's 4 usernames. Anyone can pick their name and set
+// their own password the first time they log in.
+const TEAM_MEMBERS = ["BigChicken135", "circus12en34", "FlyingDutchman55", "Netti_"];
+
+// Paste your Firebase project config here (see setup notes at bottom of chat)
+const firebaseConfig = {
+  apiKey: "AIzaSyD1VnsqIwZ6a0UvA2kSeQuFRaZoGYuqFfQ",
+  authDomain: "basemap-planner.firebaseapp.com",
+  databaseURL: "https://basemap-planner-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "basemap-planner",
+  storageBucket: "basemap-planner.firebasestorage.app",
+  messagingSenderId: "928571574145",
+  appId: "1:928571574145:web:76ee79906822d358f88a80"
+};
+
+/* ========================================================= */
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let currentUser = null;
+
+/* ---------------- password hashing (basic, not bank-grade) ---------------- */
+async function sha256(str){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+/* ---------------- LOGIN ---------------- */
+const userSelect = document.getElementById("userSelect");
+TEAM_MEMBERS.forEach(name=>{
+  const opt = document.createElement("option");
+  opt.value = name; opt.textContent = name;
+  userSelect.appendChild(opt);
+});
+
+document.getElementById("loginBtn").onclick = async ()=>{
+  const name = userSelect.value;
+  const pw = document.getElementById("pwInput").value;
+  const msg = document.getElementById("loginMsg");
+  if(!pw){ msg.textContent = "Enter a password."; return; }
+
+  const snap = await db.ref("users/"+name).get();
+  const hash = await sha256(pw);
+
+  if(!snap.exists() || !snap.val().passwordHash){
+    // first login for this user -> set their password
+    await db.ref("users/"+name).set({ passwordHash: hash });
+    logIn(name);
+  } else if(snap.val().passwordHash === hash){
+    logIn(name);
+  } else {
+    msg.textContent = "Wrong password.";
+  }
+};
+
+function logIn(name){
+  currentUser = name;
+  document.getElementById("whoName").textContent = name;
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+  initMap();
+  initList();
+}
+
+document.getElementById("logoutLink").onclick = (e)=>{
+  e.preventDefault();
+  currentUser = null;
+  document.getElementById("app").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("pwInput").value = "";
+};
+
+/* ---------------- TABS ---------------- */
+document.getElementById("tabLive").onclick = ()=> switchTab("liveView","tabLive");
+document.getElementById("tabMap").onclick = ()=> switchTab("mapView","tabMap");
+document.getElementById("tabList").onclick = ()=> switchTab("listView","tabList");
+function switchTab(viewId, tabId){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
+  document.getElementById(viewId).classList.add("active");
+  document.getElementById(tabId).classList.add("active");
+}
+
+/* =========================================================
+   2. MAP / DRAWING
+   ========================================================= */
+let tool = "pen";
+let color = "#7ba05b";
+let drawing = false;
+let currentStroke = null;
+let rectStart = null;
+let scale = 1;
+
+const stage = document.getElementById("stage");
+const bgImg = document.getElementById("bgImg");
+const canvas = document.getElementById("drawCanvas");
+const ctx = canvas.getContext("2d");
+const wrap = document.getElementById("canvasWrap");
+let shapes = {}; // id -> shape object
+
+function initMap(){
+  document.querySelectorAll(".tool-btn[data-tool]").forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll(".tool-btn[data-tool]").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      tool = btn.dataset.tool;
+    };
+  });
+  document.getElementById("colorPicker").oninput = (e)=> color = e.target.value;
+  document.getElementById("zoomSlider").oninput = (e)=>{
+    scale = e.target.value/100;
+    stage.style.transform = `scale(${scale})`;
+  };
+  document.getElementById("clearDrawBtn").onclick = ()=>{
+    if(confirm("Clear ALL drawings for everyone?")) db.ref("drawings").remove();
+  };
+
+  const fileInput = document.getElementById("imgFile");
+  document.getElementById("changeImageBtn").onclick = ()=> fileInput.click();
+  document.getElementById("uploadFirstBtn").onclick = ()=> fileInput.click();
+  fileInput.onchange = handleImageUpload;
+
+  // load background image
+  db.ref("mapImage").on("value", snap=>{
+    const url = snap.val();
+    if(url){
+      bgImg.src = url;
+      document.getElementById("noImageMsg").style.display = "none";
+      bgImg.onload = resizeCanvas;
+    } else {
+      document.getElementById("noImageMsg").style.display = "block";
+    }
+  });
+
+  // sync drawings
+  db.ref("drawings").on("value", snap=>{
+    shapes = snap.val() || {};
+    redraw();
+  });
+
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+}
+
+function handleImageUpload(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const img = new Image();
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    img.onload = ()=>{
+      // downscale to keep DB size reasonable
+      const maxW = 1800;
+      const ratio = Math.min(1, maxW/img.width);
+      const c = document.createElement("canvas");
+      c.width = img.width*ratio; c.height = img.height*ratio;
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      const dataUrl = c.toDataURL("image/jpeg",0.85);
+      db.ref("mapImage").set(dataUrl);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function resizeCanvas(){
+  canvas.width = bgImg.naturalWidth;
+  canvas.height = bgImg.naturalHeight;
+  canvas.style.width = bgImg.naturalWidth+"px";
+  canvas.style.height = bgImg.naturalHeight+"px";
+  redraw();
+}
+
+function getPos(e){
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) / scale,
+    y: (e.clientY - rect.top) / scale
+  };
+}
+
+function onPointerDown(e){
+  const pos = getPos(e);
+  if(tool === "pen"){
+    drawing = true;
+    currentStroke = { type:"pen", color, points:[pos], author: currentUser, ts: Date.now() };
+  } else if(tool === "rect"){
+    drawing = true;
+    rectStart = pos;
+  } else if(tool === "pin"){
+    const label = prompt("Label for this pin:", "");
+    if(label !== null){
+      db.ref("drawings").push({ type:"pin", x:pos.x, y:pos.y, color, label, author: currentUser, ts: Date.now() });
+    }
+  } else if(tool === "erase"){
+    eraseNear(pos);
+  }
+}
+function onPointerMove(e){
+  if(!drawing) return;
+  const pos = getPos(e);
+  if(tool === "pen" && currentStroke){
+    currentStroke.points.push(pos);
+    redraw(); drawShape(currentStroke);
+  } else if(tool === "rect" && rectStart){
+    redraw();
+    drawShape({type:"rect", color, x:Math.min(rectStart.x,pos.x), y:Math.min(rectStart.y,pos.y),
+      w:Math.abs(pos.x-rectStart.x), h:Math.abs(pos.y-rectStart.y), label:""});
+  }
+}
+function onPointerUp(e){
+  if(!drawing) return;
+  drawing = false;
+  const pos = getPos(e);
+  if(tool === "pen" && currentStroke && currentStroke.points.length > 1){
+    db.ref("drawings").push(currentStroke);
+  } else if(tool === "rect" && rectStart){
+    const w = Math.abs(pos.x-rectStart.x), h = Math.abs(pos.y-rectStart.y);
+    if(w > 4 && h > 4){
+      const label = prompt("Name this build zone:", "");
+      db.ref("drawings").push({
+        type:"rect", color, x:Math.min(rectStart.x,pos.x), y:Math.min(rectStart.y,pos.y),
+        w, h, label: label||"", author: currentUser, ts: Date.now()
+      });
+    }
+  }
+  currentStroke = null; rectStart = null;
+}
+
+function eraseNear(pos){
+  let bestId = null, bestDist = 30;
+  Object.entries(shapes).forEach(([id, s])=>{
+    let d = Infinity;
+    if(s.type === "pin"){
+      d = Math.hypot(s.x-pos.x, s.y-pos.y);
+    } else if(s.type === "rect"){
+      if(pos.x>=s.x && pos.x<=s.x+s.w && pos.y>=s.y && pos.y<=s.y+s.h) d = 0;
+    } else if(s.type === "pen"){
+      d = Math.min(...s.points.map(p=>Math.hypot(p.x-pos.x,p.y-pos.y)));
+    }
+    if(d < bestDist){ bestDist = d; bestId = id; }
+  });
+  if(bestId) db.ref("drawings/"+bestId).remove();
+}
+
+function redraw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  Object.values(shapes).forEach(drawShape);
+}
+function drawShape(s){
+  ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = 3; ctx.lineCap="round";
+  if(s.type === "pen"){
+    ctx.beginPath();
+    s.points.forEach((p,i)=> i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+    ctx.stroke();
+  } else if(s.type === "rect"){
+    ctx.strokeRect(s.x, s.y, s.w, s.h);
+    if(s.label){
+      ctx.font = "bold 14px sans-serif";
+      ctx.fillText(s.label, s.x+4, s.y-6 < 10 ? s.y+16 : s.y-6);
+    }
+  } else if(s.type === "pin"){
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 6, 0, Math.PI*2);
+    ctx.fill();
+    if(s.label){
+      ctx.font = "bold 13px sans-serif";
+      ctx.fillText(s.label, s.x+9, s.y+4);
+    }
+  }
+}
+
+/* =========================================================
+   3. BLOCK LIST
+   ========================================================= */
+function initList(){
+  document.getElementById("addItemBtn").onclick = addItem;
+  db.ref("blocklist").on("value", snap=>{
+    const items = snap.val() || {};
+    const body = document.getElementById("listBody");
+    body.innerHTML = "";
+    Object.entries(items).sort((a,b)=> (a[1].ts||0)-(b[1].ts||0)).forEach(([id,item])=>{
+      const tr = document.createElement("tr");
+      if(item.done) tr.classList.add("done");
+      tr.innerHTML = `
+        <td>${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.qty||"")}</td>
+        <td>${escapeHtml(item.requestedBy||"")}</td>
+        <td class="actions"></td>`;
+      const actions = tr.querySelector(".actions");
+      const doneBtn = document.createElement("button");
+      doneBtn.textContent = item.done ? "Undo" : "Got it";
+      doneBtn.onclick = ()=> db.ref("blocklist/"+id).update({done: !item.done});
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "✕"; delBtn.className = "del-btn";
+      delBtn.onclick = ()=> db.ref("blocklist/"+id).remove();
+      actions.append(doneBtn, delBtn);
+      body.appendChild(tr);
+    });
+  });
+}
+function addItem(){
+  const name = document.getElementById("itemName").value.trim();
+  const qty = document.getElementById("itemQty").value.trim();
+  if(!name) return;
+  db.ref("blocklist").push({ name, qty, requestedBy: currentUser, done:false, ts: Date.now() });
+  document.getElementById("itemName").value = "";
+  document.getElementById("itemQty").value = "";
+}
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+</script>
+</body>
+</html>
